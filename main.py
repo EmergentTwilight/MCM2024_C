@@ -138,17 +138,17 @@ problem_type = "滞销"
 
 SubProblem1 = Model("SubProblem1")
 
-# a_26_15_8 = SubProblem1.addVars(26, 15, 8, vtype=GRB.CONTINUOUS, name='a')  # 地，物，年
-a_26_15_8 = SubProblem1.addVars(26, 15, 8, vtype=GRB.BINARY, name='a')  # 地，物，年
+a_26_15_8 = SubProblem1.addVars(26, 15, 8, vtype=GRB.CONTINUOUS, name='a')  # 地，物，年
+# a_26_15_8 = SubProblem1.addVars(26, 15, 8, vtype=GRB.BINARY, name='a')  # 地，物，年
 max_i, max_j, max_k = 26, 15, 8
 bean_id_range = (1, 5)  # 0-4 是豆类植物
 
-# # 0.1. 24-30年决策变量上下限，若使用连续变量需要确定上下界
-# for i in range(26):
-#     for j in range(15):
-#         for k in range(1, 8):
-#             a_26_15_8[i, j, k].set(GRB.Attr.LB, 0.0)
-#             a_26_15_8[i, j, k].set(GRB.Attr.UB, 1.0)
+# 0.1. 24-30年决策变量上下限，若使用连续变量需要确定上下界
+for i in range(26):
+    for j in range(15):
+        for k in range(1, 8):
+            a_26_15_8[i, j, k].set(GRB.Attr.LB, 0.0)
+            a_26_15_8[i, j, k].set(GRB.Attr.UB, 1.0)
 
 # 0.2. 读入23年的数据
 try:
@@ -166,7 +166,7 @@ for row in sheet.iter_rows(min_row=2, max_row=27, values_only=True):
     land_id = land_id_of[land_name]
     crop_id = crop_id_of[crop_name]
     for j in range(max_j):
-        SubProblem1.addConstr(a_26_15_8[land_id, j, 0] == (1 if j == crop_id else 0))
+        SubProblem1.addConstr(a_26_15_8[land_id, j, 0] == (1.0 if j == crop_id else 0.0))
 
 workbook.close()
 
@@ -175,7 +175,7 @@ constraint_1 = SubProblem1.addConstrs(
     sum(
         a_26_15_8[i, j, k]
         for j in range(max_j)  # 所有作物比例之和
-    ) == 1
+    ) == 1.0
     for i in range(max_i)  # 对于每块地
     for k in range(1, max_k)  # 对于 24-30 年
 )
@@ -183,16 +183,25 @@ constraint_1 = SubProblem1.addConstrs(
 # 2. 豆类作物三年至少种一次
 constraint_2 = SubProblem1.addConstrs(
     sum(
-        a_26_15_8[i, j, k] + a_26_15_8[i, j, k + 1] + a_26_15_8[i, j, k + 2]  # 连续三年之和
-        for j in range(*bean_id_range)  # 豆类植物
-    ) >= 1
+        a_26_15_8[i, j, k] + a_26_15_8[i, j, k + 1] + a_26_15_8[i, j, k + 2]  # 连续三年这种豆类面积之和
+        for j in range(*bean_id_range)  # 所有豆类植物
+    ) >= 1.0
     for i in range(max_i)  # 对于每块地
     for k in range(max_k - 2)  # 对于 23-28 年
 )
 
 # 3. 不重茬
+z_26_15_8 = SubProblem1.addConstrs(26, 15, 8, vtype=GRB.BINARY)  # 辅助变量，表征是否有种植
+
+for i in range(max_i):
+    for j in range(max_j):
+        for k in range(max_k):
+            M = 1e10
+            SubProblem1.addConstr(z_26_15_8[i, j, k] <= M * a_26_15_8[i, j, k])
+            SubProblem1.addConstr(z_26_15_8[i, j, k] >= a_26_15_8[i, j, k])
+
 constraint_3 = SubProblem1.addConstrs(
-    a_26_15_8[i, j, k] + a_26_15_8[i, j, k + 1] <= 1
+    z_26_15_8[i, j, k] + z_26_15_8[i, j, k + 1] <= 1  # 连续两年不重复出现
     for i in range(max_i)  # 对于每块地
     for j in range(max_j)  # 对于每种作物
     for k in range(max_k - 1)  # 对于 23-29 年
@@ -216,11 +225,11 @@ for k in range(1, max_k):
         sale_var = SubProblem1.addVar(vtype=GRB.CONTINUOUS, name=f'sale_{j}_{k}')
 
         SubProblem1.addConstr(sale_var <= production)
-        SubProblem1.addConstr(sale_var <= crop.expected_sale)
+        SubProblem1.addConstr(sale_var <= crop.expected_sale)  # 会自动优化到 min(production, expected_sale)
 
-        income = sale_var * lands[0].price[crop_id, 0]
+        income = sale_var * lands[0].price[crop_id, 0]  # 由于单季且价格都一样，直接取第一块地的数据
         if problem_type == "降价":
-            discount_sale_var = SubProblem1.addVar(vtype=GRB.CONTINUOUS, name=f'discount_sale_{j}_{k}')
+            discount_sale_var = SubProblem1.addVar(vtype=GRB.CONTINUOUS, name=f'discount_sale_{j}_{k}')  # 降价销售量 = max(0, production - expected_sale)
             is_positive = SubProblem1.addVar(vtype=GRB.BINARY, name=f'is_positive{j}_{k}')
 
             # 约束 is_positive
