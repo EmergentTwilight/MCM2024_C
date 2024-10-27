@@ -133,24 +133,20 @@ workbook.close()
 
 from gurobipy import GRB, Model
 
-problem_type = "滞销"
-# problem_type = "降价"
+M = 1e15
+
+# problem_type = "滞销"
+problem_type = "降价"
 
 SubProblem1 = Model("SubProblem1")
 
-a_26_15_8 = SubProblem1.addVars(26, 15, 8, vtype=GRB.CONTINUOUS, name='a')  # 地，物，年
+a_26_15_8 = SubProblem1.addVars(26, 15, 8, lb=0.0, ub=1.0, vtype=GRB.CONTINUOUS, name='a')  # 地，物，年
 # a_26_15_8 = SubProblem1.addVars(26, 15, 8, vtype=GRB.BINARY, name='a')  # 地，物，年
 max_i, max_j, max_k = 26, 15, 8
 bean_id_range = (1, 5)  # 0-4 是豆类植物
 
-# 0.1. 24-30年决策变量上下限，若使用连续变量需要确定上下界
-for i in range(26):
-    for j in range(15):
-        for k in range(1, 8):
-            a_26_15_8[i, j, k].set(GRB.Attr.LB, 0.0)
-            a_26_15_8[i, j, k].set(GRB.Attr.UB, 1.0)
 
-# 0.2. 读入23年的数据
+# 0 读入23年的数据
 try:
     workbook = openpyxl.load_workbook(os.path.join(path, "附件2_去年作物与收成情况.xlsx"))
 except FileNotFoundError:
@@ -191,12 +187,11 @@ constraint_2 = SubProblem1.addConstrs(
 )
 
 # 3. 不重茬
-z_26_15_8 = SubProblem1.addConstrs(26, 15, 8, vtype=GRB.BINARY)  # 辅助变量，表征是否有种植
+z_26_15_8 = SubProblem1.addVars(26, 15, 8, vtype=GRB.BINARY)  # 辅助变量，表征是否有种植
 
 for i in range(max_i):
     for j in range(max_j):
         for k in range(max_k):
-            M = 1e10
             SubProblem1.addConstr(z_26_15_8[i, j, k] <= M * a_26_15_8[i, j, k])
             SubProblem1.addConstr(z_26_15_8[i, j, k] >= a_26_15_8[i, j, k])
 
@@ -233,7 +228,6 @@ for k in range(1, max_k):
             is_positive = SubProblem1.addVar(vtype=GRB.BINARY, name=f'is_positive{j}_{k}')
 
             # 约束 is_positive
-            M = 1e10
             SubProblem1.addConstr(production - crop.expected_sale <= M * is_positive)
             SubProblem1.addConstr(production - crop.expected_sale >= -M * (1 - is_positive))
 
