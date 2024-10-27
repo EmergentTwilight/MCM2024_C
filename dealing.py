@@ -32,7 +32,7 @@ class Land:
 lands = []
 
 # 检查路径和 Excel 文件
-path = r"./data"
+path = r"problem"
 if not os.path.exists(path):
     print("Incorrect path!")
     exit(1)
@@ -62,8 +62,8 @@ for row in sheet.iter_rows(min_row=1, values_only=True):
     lands.append(land_instance)
 #
 # # 检查 Land 数组是否正确生成
-# for land in lands:
-#     print(f"Land {land.no}: Size = {land.size}, Status = {land.status} mark = {land.mark}")
+for land in lands:
+    print(f"Land {land.no}: Size = {land.size}, Status = {land.status} mark = {land.mark}")
 # 定义作物类
 sheet = workbook[sheet_names[1]]
 
